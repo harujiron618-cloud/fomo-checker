@@ -1,0 +1,44 @@
+/* ===== テーマ用の色(変数) ===== */
+:root {
+  --bg: #ffffff; --card: #f6f8fb; --text: #1f2933; --sub: #5f6c7b;
+  --accent: #3b82f6; --border: #dde3ea; --error: #d64545;
+}
+/* ダークモード: 手動切替(data-theme)を優先、未設定なら端末設定に従う */
+:root[data-theme="dark"] {
+  --bg: #12161c; --card: #1b212a; --text: #e8edf3; --sub: #9aa7b5;
+  --accent: #6aa5ff; --border: #2d3641; --error: #ff7b7b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12161c; --card: #1b212a; --text: #e8edf3; --sub: #9aa7b5;
+    --accent: #6aa5ff; --border: #2d3641; --error: #ff7b7b;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font-family: system-ui, "Hiragino Sans", "Noto Sans JP", sans-serif; line-height: 1.7; }
+/* 1カラム: スマホ幅を基準に中央寄せ */
+.container { max-width: 480px; margin: 0 auto; padding: 16px; }
+.header { display: flex; justify-content: space-between; align-items: center; }
+h1 { font-size: 1.4rem; margin: 8px 0; }
+h2 { font-size: 1.05rem; margin: 20px 0 8px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+.note { color: var(--sub); font-size: .85rem; }
+.error { color: var(--error); min-height: 1.4em; font-size: .9rem; }
+[hidden] { display: none !important; }
+button { font: inherit; cursor: pointer; border-radius: 10px; }
+.btn { width: 100%; padding: 12px; border: 0; background: var(--accent); color: #fff; margin-top: 8px; }
+.btn-sub { width: 100%; padding: 12px; margin-top: 8px; background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+.btn-ghost { background: transparent; border: 0; color: var(--sub); padding: 8px; }
+/* 質問 */
+fieldset { border: 0; padding: 0; margin: 0 0 16px; }
+legend { font-weight: 600; padding: 0; margin-bottom: 6px; }
+.choices { display: flex; gap: 6px; }
+.choices label { flex: 1; text-align: center; }
+.choices input { position: absolute; opacity: 0; }
+.choices span { display: block; padding: 10px 0; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
+.choices input:checked + span { background: var(--accent); color: #fff; border-color: var(--accent); }
+.choices input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* 結果 */
+.score { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); }
+svg { width: 100%; height: auto; }
