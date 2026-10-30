@@ -40,7 +40,49 @@
     new Date(iso).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
 
   const footerNote = () =>
-    h("p", { class: "muted" }, "このアプリは診断ツールではありません。回答は、スマホやSNSとの関わり方を振り返るための参考です。入力した内容や結果は、この端末の中にだけ保存されます。");
+    h("p", { class: "muted" }, "このアプリは診断ツールではありません。回答は、スマホやSNSとの関わり方を振り返るための参考です。結果はこの端末のブラウザに保存され、名前などの個人情報は集めません。");
+
+  // ---------- 設定（保存方法の選択） ----------
+  function renderStorageChooser() {
+    const message = h("p", { class: "muted", role: "status" });
+    const current = Storage.getMode();
+    const rows = Object.keys(Storage.MODES).map((key) => {
+      const input = h("input", { type: "radio", name: "storageMode", value: key });
+      input.checked = key === current;
+      input.addEventListener("change", () => {
+        if (Storage.setMode(key)) {
+          message.textContent = "保存方法を「" + Storage.MODES[key].label + "」に変更しました。これまでの履歴も移しました。";
+        } else {
+          message.textContent = "この保存方法は今の環境では使えませんでした。元の方法のままです。";
+          card.querySelector('input[name="storageMode"][value="' + Storage.getMode() + '"]').checked = true;
+        }
+      });
+      return h("label", { class: "choice-row" }, input,
+        h("span", null, h("strong", null, Storage.MODES[key].label), h("br"), h("span", { class: "muted" }, Storage.MODES[key].description)));
+    });
+    const card = h("div", { class: "card" },
+      h("h3", null, "結果の保存方法"),
+      h("p", { class: "muted" }, "どちらも、名前などの個人情報は保存されません。あとからいつでも変更できます。"),
+      rows, message);
+    return card;
+  }
+
+  // 右上の設定ボタンから開く画面（回答の途中でも開ける）
+  function openSettings() {
+    if (document.getElementById("settings-modal")) return;
+    const closeBtn = h("button", { class: "btn", onclick: close }, "閉じる");
+    const overlay = h("div", { id: "settings-modal", class: "modal-backdrop", onclick: (e) => { if (e.target === overlay) close(); } },
+      h("div", { class: "modal-panel", role: "dialog", "aria-modal": "true", "aria-label": "設定" },
+        h("h2", { style: "margin-top:0" }, "設定"),
+          closeBtn));
+    function onKey(e) { if (e.key === "Escape") close(); }
+    function close() { overlay.remove(); document.removeEventListener("keydown", onKey); settingsBtn.focus(); }
+    document.addEventListener("keydown", onKey);
+    document.body.append(overlay);
+    closeBtn.focus();
+  }
+
+  const settingsBtn = h("button", { id: "settings-btn", class: "settings-btn", "aria-label": "設定（保存方法）", onclick: openSettings }, "\u2699\uFE0E");
 
   // ---------- 開始画面 ----------
   function renderStart() {
@@ -52,10 +94,11 @@
         h("h3", null, "はじめる前に"),
         h("ul", { class: "plain" },
           h("li", null, "名前・学校名・メールアドレスなどは入力しません。"),
-          h("li", null, "回答の履歴は、この端末の中だけに保存されます。"),
+          h("li", null, "回答の履歴は、この端末のブラウザに保存されます（保存方法は右上の設定で選べます）。"),
           h("li", null, "SNSやスマホを否定するものではありません。")
         )
       ),
+      renderStorageChooser(),
       h("button", { class: "btn", onclick: startSurvey }, "アンケートを始める"),
       h("button", { class: "btn secondary", onclick: renderHistory }, "過去の得点の推移"),
       footerNote()
@@ -187,7 +230,7 @@
         h("ul", { class: "plain" }, researchRows),
         h("p", null, "R²=" + RESEARCH.r2 + "　" + RESEARCH.f + "　" + RESEARCH.p)
       ),
-      saved ? h("p", { class: "muted" }, "今回の結果をこの端末に保存しました。") : h("p", { class: "muted" }, "この端末では結果を保存できませんでした。"),
+      saved ? h("p", { class: "muted" }, "今回の結果を「" + Storage.MODES[Storage.getMode()].label + "」に保存しました。") : h("p", { class: "muted" }, "この端末では結果を保存できませんでした。"),
       previous ? h("p", { class: "muted" }, describeChange(previous, scores)) : null,
       h("button", { class: "btn", onclick: renderHistory }, "過去の結果と見比べる"),
       h("button", { class: "btn secondary", onclick: renderStart }, "最初の画面へ"),
@@ -263,6 +306,7 @@
     }
   }
 
+  document.body.append(settingsBtn);
   // 起動（二重描画を避けるため1回だけ呼ぶ）
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", renderStart);
   else renderStart();
