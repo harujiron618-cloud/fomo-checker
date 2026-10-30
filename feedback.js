@@ -44,6 +44,22 @@
     fallback: "今回の結果をもとに、スマホやSNSを使うときの自分の気持ちや場面を振り返ってみましょう。SNSは友人とのつながりを支える面もあります。自分に合った距離感を、自分のペースで考えてみてください。"
   };
 
+  // 研究（回答の文章分析）で多く語られていた役割をふまえた振り返りの視点。原因を断定しない表現にする
+  const RESEARCH_HINTS = {
+    f1: "研究の回答では、スマホは友だちや家族との連絡・交流の手段として多く語られていました。やり取りを大切にしながら、返信や通知が気になるときに自分がどんな気持ちかを振り返ってみましょう。",
+    f2: "研究の回答では、スマホは勉強の道具として役立つ一方で、勉強の妨げにもなると語られていました。勉強や睡眠の前後にどう使うか、自分に合うルールを考えてみましょう。",
+    f3: "研究の回答では、スマホは生活の一部、なくてはならないものとして語られていました。だからこそ、会話中や食事中など「今日は使わない」場面を自分で決めてみるのも一つの方法です。",
+    general: "研究の回答では、スマホは連絡・勉強・息抜き・日常の一部など、さまざまな役割で語られていました。あなたにとってスマホが役に立っている場面を思い出してみましょう。",
+    fomoHigh: "また、スマホは息抜きやストレス発散の場としても語られていました。SNSを見て気持ちが軽くなる場面と、落ち着かなくなる場面があるか、思い出してみましょう。"
+  };
+  const REFLECTION_PROMPT = "あなたにとってスマホは、どんな場面で役に立っていますか？ そのとき、自分はどんな気持ちでしょうか？";
+
+  // 相対的に高い因子とFOMOの段階に応じた視点を作る
+  function pickResearchHint(levels, top) {
+    const base = top ? RESEARCH_HINTS[top] : RESEARCH_HINTS.general;
+    return levels.fomo === "high" ? base + RESEARCH_HINTS.fomoHigh : base;
+  }
+
   // 総合コメントの選択（FOMOが比較的高く、かつ相対的に高い因子も比較的高い場合に組み合わせ文）
   function pickSummary(levels, top) {
     if (top === null) return SUMMARY.none;
@@ -64,7 +80,9 @@
         f2: TEMPLATES.f2[levels.f2], f3: TEMPLATES.f3[levels.f3]
       },
       topFactorText: top ? TOP_FACTOR_TEXT[top] : null,
-      summary: pickSummary(levels, top)
+      summary: pickSummary(levels, top),
+      researchHint: pickResearchHint(levels, top),
+      reflectionPrompt: REFLECTION_PROMPT
     };
   }
 
