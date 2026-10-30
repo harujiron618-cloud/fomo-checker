@@ -14,7 +14,7 @@ body {
   margin: 0; background: var(--bg); color: var(--text);
   font-family: "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif; line-height: 1.8;
 }
-#app { max-width: 640px; margin: 0 auto; padding: 20px 16px 48px; outline: none; }
+#app { max-width: 640px; margin: 0 auto; padding: 56px 16px 48px; outline: none; }
 h1 { font-size: 1.6rem; margin: 8px 0; }
 h2 { font-size: 1.15rem; margin: 28px 0 8px; }
 .tagline { color: var(--accent); font-weight: 700; }
@@ -64,3 +64,20 @@ th, td { padding: 6px 4px; border-bottom: 1px solid var(--line); text-align: rig
 th:first-child, td:first-child { text-align: left; }
 .table-wrap { overflow-x: auto; }
 details summary { cursor: pointer; color: var(--accent); }
+
+/* 保存方法の選択 */
+.choice-row { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; cursor: pointer; line-height: 1.6; }
+.choice-row input { margin-top: 6px; flex: none; width: 18px; height: 18px; }
+
+/* 設定ボタン（右上）と設定画面 */
+.settings-btn {
+  position: fixed; top: 10px; right: 10px; z-index: 20; width: 44px; height: 44px;
+  font-size: 1.5rem; line-height: 1; border: 2px solid var(--line); border-radius: 50%;
+  background: var(--card); color: var(--text); cursor: pointer;
+}
+.settings-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: 30; background: rgba(0, 0, 0, .45);
+  display: flex; align-items: flex-start; justify-content: center; padding: 56px 16px 16px; overflow-y: auto;
+}
+.modal-panel { background: var(--bg); color: var(--text); border-radius: 14px; padding: 16px; width: 100%; max-width: 560px; }
