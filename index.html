@@ -5,42 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>FOMOチェッカー</title>
   <link rel="stylesheet" href="style.css">
+  <!-- グラフ用。読み込めない場合は表のみ表示される -->
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script defer src="questions.js"></script>
+  <script defer src="scoring.js"></script>
+  <script defer src="feedback.js"></script>
+  <script defer src="storage.js"></script>
+  <script defer src="app.js"></script>
 </head>
 <body>
-  <main class="container">
-    <header class="header">
-      <h1>FOMOチェッカー</h1>
-      <button id="themeToggle" class="btn-ghost" type="button" aria-label="ダークモード切替">🌓</button>
-    </header>
-
-    <!-- 1. 説明画面 -->
-    <section id="intro" class="card">
-      <p>FOMO(取り残されることへの不安)とスマホの使い方を、20問でチェックします。</p>
-      <p class="note">診断ではなく、自分を知るための目安です。回答はこの端末の中だけに保存されます。</p>
-      <button id="startBtn" class="btn" type="button">はじめる</button>
-      <button id="historyBtn" class="btn-sub" type="button">過去の結果を見る</button>
-    </section>
-
-    <!-- 2. アンケート画面(質問はapp.jsが生成) -->
-    <section id="survey" class="card" hidden>
-      <p class="note">1=全くあてはまらない 〜 5=非常にあてはまる</p>
-      <form id="form" novalidate></form>
-      <p id="error" class="error" role="alert"></p>
-      <button id="submitBtn" class="btn" type="button">結果を見る</button>
-    </section>
-
-    <!-- 3. 結果画面 -->
-    <section id="result" class="card" hidden>
-      <h2>結果</h2>
-      <div id="scores"></div>
-      <h2>アドバイス</h2>
-      <p id="advice" aria-live="polite">作成中…</p>
-      <h2>FOMOの推移</h2>
-      <div id="chart"></div>
-      <button id="retryBtn" class="btn-sub" type="button">もう一度チェックする</button>
-      <button id="clearBtn" class="btn-ghost" type="button">履歴を削除</button>
-    </section>
+  <main id="app" tabindex="-1">
+    <noscript>このアプリはJavaScriptを有効にしてご利用ください。</noscript>
   </main>
-  <script src="app.js"></script>
 </body>
 </html>

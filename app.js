@@ -1,211 +1,269 @@
-"use strict";
+// 画面表示とイベント処理
+(function () {
+  "use strict";
+  const { QUESTIONS, SCALES, SCALE_LABELS, RESEARCH, Scoring, Feedback, Storage } = window.FomoApp;
 
-/* ===== 設定 ===== */
-// 生成AIの中継サーバーURL。空のままなら内蔵のルールベースのアドバイスを使う。
-// ※APIキーはブラウザのコードに絶対に書かない(中継サーバー側で管理する)。
-//   中継サーバーは POST {prompt} を受け取り {text} を返す想定。
-const AI_ENDPOINT = "";
-const STORAGE_KEY = "fomoChecker.history.v1";
+  const PAGE_SIZE = 3; // 1ページの質問数
+  const TOTAL_PAGES = Math.ceil(QUESTIONS.length / PAGE_SIZE);
+  // 生成AI接続口：サーバー側のURLを入れると補助ボタンが表示される（APIキーはここに書かない）
+  const AI_CONFIG = { endpoint: "", timeoutMs: 15000 };
 
-/* ===== 質問項目 =====
-   FOMO: Przybylski et al. (2013) の10項目を訳した【仮訳】。研究で使う場合は正式な日本語版に差し替えてください。
-   スマホ: 筆者作成の【仮の項目】。SUPIQ等の日本語版が決まったら差し替えてください。 */
-const FOMO_ITEMS = [
-  "他の人が自分より充実した経験をしているのではないかと不安になる",
-  "友達が自分より充実した経験をしているのではないかと不安になる",
-  "友達が何をしているのか分からないと不安になる",
-  "友達の「内輪ネタ」を理解しておくことは大切だ",
-  "周りの出来事を追いかけるのに時間を使いすぎていないかと思うことがある",
-  "友達と会う機会を逃すと気になる",
-  "予定されていた集まりに行けないと気になる",
-  "楽しい時間を過ごしたら、その様子をSNSなどで共有することが大切だ",
-  "旅行や外出中も、友達が何をしているかをチェックし続ける",
-  "友達と会う約束がある時、何があるのかを知っておくことが大切だ"
-];
-const PHONE_ITEMS = [
-  "スマホを使う時間が、思っていたより長くなってしまう",
-  "使うのをやめようとしても、なかなかやめられない",
-  "スマホのせいで、勉強や宿題が進まないことがある",
-  "夜遅くまでスマホを見て、睡眠不足になることがある",
-  "スマホが手元にないと落ち着かない",
-  "通知が来ると、すぐ確認せずにいられない",
-  "人と一緒にいる時でも、つい画面を見てしまう",
-  "スマホの使いすぎを、家族や友達に指摘されたことがある",
-  "気分が落ち込んだ時、スマホを見て紛らわせることが多い",
-  "スマホの使い方を減らしたいと思うことがある"
-];
-const ALL_ITEMS = [
-  ...FOMO_ITEMS.map((t) => ({ key: "f", text: t })),
-  ...PHONE_ITEMS.map((t) => ({ key: "p", text: t }))
-];
+  const state = { answers: {}, page: 0 };
+  const root = document.getElementById("app");
+  let chartInstance = null;
 
-/* ===== 画面要素の取得 ===== */
-const $ = (id) => document.getElementById(id);
-const screens = ["intro", "survey", "result"];
-function show(name) { screens.forEach((s) => { $(s).hidden = s !== name; }); window.scrollTo(0, 0); }
-
-/* ===== 履歴の保存・読込(localStorageが使えない環境でも落ちないようにする) ===== */
-function loadHistory() {
-  try {
-    const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-    return Array.isArray(data) ? data : [];
-  } catch (e) { return []; }
-}
-function saveHistory(list) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(-30))); } catch (e) { /* 保存不可は無視 */ }
-}
-
-/* ===== 質問フォームの生成 ===== */
-function buildForm() {
-  const form = $("form");
-  form.textContent = "";
-  ALL_ITEMS.forEach((item, i) => {
-    const fs = document.createElement("fieldset");
-    const lg = document.createElement("legend");
-    lg.textContent = `${i + 1}. ${item.text}`;   // textContentでXSSを防ぐ
-    fs.appendChild(lg);
-    const row = document.createElement("div");
-    row.className = "choices";
-    for (let v = 1; v <= 5; v++) {
-      const label = document.createElement("label");
-      const input = document.createElement("input");
-      input.type = "radio"; input.name = "q" + i; input.value = String(v);
-      const span = document.createElement("span");
-      span.textContent = String(v);
-      label.append(input, span);
-      row.appendChild(label);
-    }
-    fs.appendChild(row);
-    form.appendChild(fs);
-  });
-}
-
-/* ===== 採点 =====(各10問・1〜5点 → 合計10〜50点) */
-function readScores() {
-  let f = 0, p = 0;
-  for (let i = 0; i < ALL_ITEMS.length; i++) {
-    const checked = document.querySelector(`input[name="q${i}"]:checked`);
-    if (!checked) return null;                    // 未回答あり
-    if (ALL_ITEMS[i].key === "f") f += Number(checked.value); else p += Number(checked.value);
-  }
-  return { fomo: f, phone: p };
-}
-// 目安の区分(診断ではない。仮の基準)
-function level(score) { return score <= 23 ? "低め" : score <= 36 ? "ふつう" : "高め"; }
-
-/* ===== アドバイス ===== */
-function localAdvice(s) {
-  const lf = level(s.fomo), lp = level(s.phone);
-  const tips = [];
-  if (lf === "高め") tips.push("「みんな楽しそう」に見えるSNSは、実際は一部を切り取ったものです。見る時間を決めてみましょう。");
-  else tips.push("人の様子が気になりすぎない、いいバランスです。この感覚を大事にしましょう。");
-  if (lp === "高め") tips.push("寝る30分前はスマホを手の届かない所に置く、通知を一部オフにするなど、小さな工夫から始めてみましょう。");
-  else if (lp === "ふつう") tips.push("勉強中だけ通知を切るなど、ひとつだけルールを作ると効果的です。");
-  else tips.push("スマホとの距離感は良好です。");
-  if (lf === "高め" && lp === "高め") tips.push("不安でスマホを開く流れができているかも。つらい時は、信頼できる人に話してみてください。");
-  return tips.join("\n");
-}
-async function getAdvice(s) {
-  if (!AI_ENDPOINT) return localAdvice(s);
-  const prompt = `高校生向けに、やさしく具体的に150字以内でアドバイスしてください。診断や断定はしないこと。` +
-    `FOMO得点${s.fomo}/50(${level(s.fomo)})、スマホ使用の得点${s.phone}/50(${level(s.phone)})。`;
-  try {
-    const res = await fetch(AI_ENDPOINT, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt })
+  // 要素作成の補助関数（innerHTMLを使わずXSSを避ける）
+  function h(tag, attrs, ...children) {
+    const el = document.createElement(tag);
+    Object.entries(attrs || {}).forEach(([k, v]) => {
+      if (k === "class") el.className = v;
+      else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+      else if (v !== false && v != null) el.setAttribute(k, v);
     });
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const data = await res.json();
-    return typeof data.text === "string" && data.text ? data.text : localAdvice(s);
-  } catch (e) { return localAdvice(s); }           // 失敗時は内蔵アドバイスに切替
-}
+    children.flat().forEach((c) => {
+      if (c == null || c === false) return;
+      el.append(c.nodeType ? c : document.createTextNode(String(c)));
+    });
+    return el;
+  }
 
-/* ===== 結果表示 ===== */
-function renderScores(s) {
-  const box = $("scores");
-  box.textContent = "";
-  [["FOMO", s.fomo], ["スマホ使用", s.phone]].forEach(([name, v]) => {
-    const row = document.createElement("div");
-    row.className = "score";
-    row.textContent = `${name}:${v} / 50(${level(v)})`;
-    box.appendChild(row);
-  });
-}
-// 推移グラフ(外部ライブラリなしのSVG折れ線)
-function renderChart(history) {
-  const box = $("chart");
-  box.textContent = "";
-  if (history.length < 2) { box.textContent = "2回以上チェックすると推移が表示されます。"; return; }
-  const W = 300, H = 140, pad = 24;
-  const pts = history.map((h, i) => {
-    const x = pad + (i * (W - pad * 2)) / (history.length - 1);
-    const y = H - pad - ((h.fomo - 10) / 40) * (H - pad * 2);
-    return [x, y];
-  });
-  const NS = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(NS, "svg");
-  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
-  const line = document.createElementNS(NS, "polyline");
-  line.setAttribute("points", pts.map((p) => p.join(",")).join(" "));
-  line.setAttribute("fill", "none"); line.setAttribute("stroke", "var(--accent)"); line.setAttribute("stroke-width", "2");
-  svg.appendChild(line);
-  pts.forEach(([x, y]) => {
-    const c = document.createElementNS(NS, "circle");
-    c.setAttribute("cx", x); c.setAttribute("cy", y); c.setAttribute("r", "3.5"); c.setAttribute("fill", "var(--accent)");
-    svg.appendChild(c);
-  });
-  [["10点", H - pad], ["50点", pad]].forEach(([t, y]) => {   // 目盛り
-    const tx = document.createElementNS(NS, "text");
-    tx.setAttribute("x", 2); tx.setAttribute("y", y + 4); tx.setAttribute("font-size", "9"); tx.setAttribute("fill", "var(--sub)");
-    tx.textContent = t; svg.appendChild(tx);
-  });
-  box.appendChild(svg);
-  const cap = document.createElement("p");
-  cap.className = "note";
-  cap.textContent = `FOMO得点の推移(直近${history.length}回)`;
-  box.appendChild(cap);
-}
-function showResult(s, history, withAdvice) {
-  show("result");
-  renderScores(s);
-  renderChart(history);
-  const adv = $("advice");
-  if (!withAdvice) { adv.textContent = "過去の結果の表示です。"; return; }
-  adv.textContent = "アドバイスを作成中…";
-  getAdvice(s).then((t) => { adv.textContent = t; adv.style.whiteSpace = "pre-line"; });
-}
+  // 画面を差し替える
+  function mount(...nodes) {
+    if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+    root.replaceChildren(...nodes);
+    window.scrollTo(0, 0);
+    root.focus();
+  }
 
-/* ===== ダークモード ===== */
-function applyTheme(t) { document.documentElement.setAttribute("data-theme", t); try { localStorage.setItem("fomoChecker.theme", t); } catch (e) {} }
-function initTheme() {
-  let t = null;
-  try { t = localStorage.getItem("fomoChecker.theme"); } catch (e) {}
-  if (t) applyTheme(t);   // 未設定なら端末設定(CSSのprefers-color-scheme)に従う
-}
-$("themeToggle").addEventListener("click", () => {
-  const cur = document.documentElement.getAttribute("data-theme")
-    || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-  applyTheme(cur === "dark" ? "light" : "dark");
-});
+  const fmtDate = (iso) =>
+    new Date(iso).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
 
-/* ===== イベント ===== */
-$("startBtn").addEventListener("click", () => { buildForm(); $("error").textContent = ""; show("survey"); });
-$("submitBtn").addEventListener("click", () => {
-  const s = readScores();
-  if (!s) { $("error").textContent = "未回答の質問があります。すべて答えてください。"; return; }
-  const history = loadHistory();
-  history.push({ date: new Date().toISOString(), fomo: s.fomo, phone: s.phone });
-  saveHistory(history);
-  showResult(s, history, true);
-});
-$("historyBtn").addEventListener("click", () => {
-  const h = loadHistory();
-  if (!h.length) { alert("まだ履歴がありません。"); return; }
-  showResult(h[h.length - 1], h, false);
-});
-$("retryBtn").addEventListener("click", () => show("intro"));
-$("clearBtn").addEventListener("click", () => {
-  if (confirm("履歴をすべて削除しますか?")) { try { localStorage.removeItem(STORAGE_KEY); } catch (e) {} show("intro"); }
-});
+  const footerNote = () =>
+    h("p", { class: "muted" }, "このアプリは診断ツールではありません。回答は、スマホやSNSとの関わり方を振り返るための参考です。入力した内容や結果は、この端末の中にだけ保存されます。");
 
-initTheme();
+  // ---------- 開始画面 ----------
+  function renderStart() {
+    const hasHistory = Storage.loadHistory().length > 0;
+    mount(
+      h("h1", null, "FOMOチェッカー"),
+      h("p", { class: "tagline" }, "画面よりも、目の前の『今』を。"),
+      h("p", null, "全30問・5段階で回答します（5分ほど）。正解や点数の良し悪しはありません。スマホやSNSとの関わり方を、自分のペースで振り返るためのアプリです。"),
+      h("div", { class: "card" },
+        h("h3", null, "はじめる前に"),
+        h("ul", { class: "plain" },
+          h("li", null, "名前・学校名・メールアドレスなどは入力しません。"),
+          h("li", null, "回答の履歴は、この端末の中だけに保存されます。"),
+          h("li", null, "SNSやスマホを否定するものではありません。")
+        )
+      ),
+      h("button", { class: "btn", onclick: startSurvey }, "アンケートを始める"),
+      hasHistory ? h("button", { class: "btn secondary", onclick: renderHistory }, "過去の結果を見る") : null,
+      footerNote()
+    );
+  }
+
+  function startSurvey() { state.answers = {}; state.page = 0; renderSurvey(); }
+
+  // ---------- アンケート画面 ----------
+  function renderSurvey() {
+    const start = state.page * PAGE_SIZE;
+    const pageQuestions = QUESTIONS.slice(start, start + PAGE_SIZE);
+    const isLast = state.page === TOTAL_PAGES - 1;
+
+    const progressText = h("span");
+    const progressFill = h("div");
+    const errorBox = h("p", { class: "error", role: "alert" });
+    const nextBtn = h("button", { class: "btn", onclick: onNext }, isLast ? "結果を見る" : "次へ");
+
+    // 回答状況（プログレスバー）と「次へ」ボタンの有効状態を更新
+    function refresh() {
+      const answered = QUESTIONS.filter((q) => state.answers[q.id]).length;
+      progressFill.style.width = (answered / QUESTIONS.length) * 100 + "%";
+      progressText.textContent = "回答済み " + answered + " / " + QUESTIONS.length;
+      nextBtn.disabled = !pageQuestions.every((q) => state.answers[q.id]);
+    }
+
+    function onNext() {
+      if (!pageQuestions.every((q) => state.answers[q.id])) {
+        errorBox.textContent = "回答していない質問があります。";
+        return;
+      }
+      if (isLast) finishSurvey();
+      else { state.page += 1; renderSurvey(); }
+    }
+
+    const fields = pageQuestions.map((q, i) =>
+      h("fieldset", { class: "question" },
+        h("legend", null, "Q" + (start + i + 1) + ". " + q.text),
+        h("div", { class: "choices" },
+          SCALE_LABELS.map((label, idx) => {
+            const value = idx + 1;
+            const input = h("input", { type: "radio", name: q.id, value: value, "aria-label": label });
+            input.checked = state.answers[q.id] === value;
+            input.addEventListener("change", () => { state.answers[q.id] = value; errorBox.textContent = ""; refresh(); });
+            return h("label", null, input, h("span", null, value));
+          })
+        ),
+        h("div", { class: "scale-hint" }, h("span", null, "1 " + SCALE_LABELS[0]), h("span", null, "5 " + SCALE_LABELS[4]))
+      )
+    );
+
+    mount(
+      h("div", { class: "progress", role: "progressbar", "aria-valuemin": 0, "aria-valuemax": QUESTIONS.length }, progressFill),
+      h("p", { class: "muted" }, progressText, "　（" + (state.page + 1) + " / " + TOTAL_PAGES + " ページ）"),
+      fields, errorBox, nextBtn,
+      state.page > 0
+        ? h("button", { class: "btn secondary", onclick: () => { state.page -= 1; renderSurvey(); } }, "戻る")
+        : h("button", { class: "btn secondary", onclick: renderStart }, "最初の画面へ")
+    );
+    refresh();
+  }
+
+  // ---------- 採点して結果へ ----------
+  function finishSurvey() {
+    if (!Scoring.validateAnswers(state.answers, QUESTIONS)) {
+      // 未回答があれば最初の未回答ページへ戻す
+      const idx = QUESTIONS.findIndex((q) => !state.answers[q.id]);
+      state.page = Math.max(0, Math.floor(idx / PAGE_SIZE));
+      renderSurvey();
+      return;
+    }
+    const scores = Scoring.calcScores(state.answers, QUESTIONS, SCALES);
+    const previous = Storage.loadHistory().slice(-1)[0] || null;
+    const saved = Storage.saveEntry(scores); // 結果表示時に1回だけ保存
+    renderResult(scores, previous, saved);
+  }
+
+  // ---------- 結果画面 ----------
+  function renderResult(scores, previous, saved) {
+    const fb = Feedback.build(scores);
+
+    const bars = SCALES.map((s) =>
+      h("div", { class: "bar-row" },
+        h("div", { class: "bar-label" }, h("span", null, s.label), h("span", null, scores[s.id].toFixed(2) + " / 5")),
+        h("div", { class: "bar-track" }, h("div", { class: "bar-fill", style: "width:" + (scores[s.id] / 5) * 100 + "%" }))
+      )
+    );
+
+    const cards = SCALES.map((s) =>
+      h("div", { class: "card" },
+        h("h3", null, s.label + "：" + Feedback.LEVEL_LABEL[fb.levels[s.id]]),
+        h("p", null, fb.byScale[s.id])
+      )
+    );
+
+    const researchRows = RESEARCH.factors.map((f) => h("li", null, f.name + "：β=" + f.beta));
+
+    const aiArea = h("div");
+    if (AI_CONFIG.endpoint) {
+      const out = h("p", null);
+      const btn = h("button", { class: "btn secondary" }, "AIで振り返りのヒントを作る（任意）");
+      btn.addEventListener("click", async () => {
+        btn.disabled = true; out.textContent = "作成中です…";
+        try {
+          out.textContent = await fetchAiAdvice({ scores: scores, levels: fb.levels, topFactor: fb.topFactor });
+        } catch (err) {
+          out.textContent = "AIによる文章は今回は表示できませんでした。上のフィードバックをご利用ください。";
+        }
+        btn.disabled = false;
+      });
+      aiArea.append(btn, out, h("p", { class: "muted" }, "AIの文章は診断ではなく、振り返りのヒントです。送信されるのは得点と段階のみで、個人情報は含まれません。"));
+    }
+
+    mount(
+      h("h1", null, "あなたの回答傾向"),
+      h("p", { class: "muted" }, "点数は平均（1〜5）です。良い・悪いを示すものではなく、今回の回答の傾向を表しています。"),
+      bars,
+      h("h2", null, "振り返りのヒント"),
+      cards,
+      fb.topFactorText ? h("div", { class: "card" }, h("h3", null, "3つの利用傾向の中で"), h("p", null, fb.topFactorText)) : null,
+      h("div", { class: "card" }, h("h3", null, "まとめ"), h("p", null, fb.summary)),
+      aiArea,
+      h("h2", null, "研究結果との関連"),
+      h("p", null, "今回の研究では、3つのスマホ利用傾向の中で『ネットコミュニケーションへの没頭』がFOMOと最も強い関連を示しました。これは「一緒に高くなりやすい傾向」を示す結果であり、SNSがFOMOを引き起こすといった因果関係や、あなたの状態を決めるものではありません。"),
+      h("details", null,
+        h("summary", null, "詳しい数値を見る"),
+        h("p", { class: "muted" }, "FOMO得点を目的変数とした重回帰分析の結果（標準化係数）"),
+        h("ul", { class: "plain" }, researchRows),
+        h("p", null, "R²=" + RESEARCH.r2 + "　" + RESEARCH.f + "　" + RESEARCH.p)
+      ),
+      saved ? h("p", { class: "muted" }, "今回の結果をこの端末に保存しました。") : h("p", { class: "muted" }, "この端末では結果を保存できませんでした。"),
+      previous ? h("p", { class: "muted" }, describeChange(previous, scores)) : null,
+      h("button", { class: "btn", onclick: renderHistory }, "過去の結果と見比べる"),
+      h("button", { class: "btn secondary", onclick: renderStart }, "最初の画面へ"),
+      footerNote()
+    );
+  }
+
+  // 前回との比較（良し悪しは判定せず、中立的に表現）
+  function describeChange(prev, cur) {
+    const changed = SCALES.some((s) => Math.abs(cur[s.id] - prev[s.id]) >= 0.3);
+    return changed ? "前回と比較して回答傾向に変化がみられました。" : "前回と比べて、回答傾向に大きな変化はみられませんでした。";
+  }
+
+  // ---------- 履歴画面 ----------
+  function renderHistory() {
+    const list = Storage.loadHistory();
+    if (list.length === 0) {
+      mount(h("h1", null, "過去の結果"), h("p", null, "まだ保存された結果はありません。"),
+        h("button", { class: "btn", onclick: renderStart }, "戻る"));
+      return;
+    }
+    const colors = ["#e45756", "#4c78a8", "#54a24b", "#f2a541"];
+    const canvas = h("canvas", { "aria-label": "回答傾向の推移グラフ" });
+    const rows = list.slice().reverse().map((e) =>
+      h("tr", null, h("td", null, fmtDate(e.date)), SCALES.map((s) => h("td", null, e[s.id].toFixed(2))))
+    );
+
+    mount(
+      h("h1", null, "過去の結果"),
+      h("p", { class: "muted" }, "回答傾向の推移です。数値の増減は良し悪しを表すものではありません。"),
+      h("div", { class: "chart-box" }, canvas),
+      list.length >= 2 ? h("p", null, describeChange(list[list.length - 2], list[list.length - 1])) : h("p", { class: "muted" }, "2回以上回答すると、前回との比較が表示されます。"),
+      h("div", { class: "table-wrap" },
+        h("table", null,
+          h("thead", null, h("tr", null, h("th", null, "日時"), SCALES.map((s) => h("th", null, s.short)))),
+          h("tbody", null, rows))),
+      h("button", { class: "btn", onclick: renderStart }, "戻る"),
+      h("button", { class: "btn secondary", onclick: () => {
+        if (window.confirm("この端末に保存された履歴をすべて削除します。よろしいですか？")) { Storage.clearHistory(); renderHistory(); }
+      } }, "履歴をすべて削除する")
+    );
+
+    // Chart.jsが読み込めた場合のみグラフを描画（失敗しても表で確認できる）
+    if (window.Chart) {
+      chartInstance = new window.Chart(canvas, {
+        type: "line",
+        data: {
+          labels: list.map((e) => fmtDate(e.date)),
+          datasets: SCALES.map((s, i) => ({
+            label: s.short, data: list.map((e) => e[s.id]), borderColor: colors[i], backgroundColor: colors[i], tension: 0.2
+          }))
+        },
+        options: { responsive: true, maintainAspectRatio: false, scales: { y: { min: 1, max: 5, ticks: { stepSize: 1 } } } }
+      });
+    }
+  }
+
+  // ---------- 生成AI接続口（サーバー経由） ----------
+  async function fetchAiAdvice(payload) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), AI_CONFIG.timeoutMs);
+    try {
+      const res = await fetch(AI_CONFIG.endpoint, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload), signal: controller.signal
+      });
+      if (!res.ok) throw new Error("bad status");
+      const data = await res.json();
+      if (typeof data.advice !== "string" || !data.advice.trim()) throw new Error("invalid response");
+      return data.advice.slice(0, 800);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // 起動（二重描画を避けるため1回だけ呼ぶ）
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", renderStart);
+  else renderStart();
+})();
