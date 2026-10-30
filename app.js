@@ -30,7 +30,8 @@
   // 画面を差し替える
   function mount(...nodes) {
     if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
-    root.replaceChildren(...nodes);
+    // 配列やnullが混ざっていても文字列化されないよう、展開して除外する
+    root.replaceChildren(...nodes.flat().filter((n) => n != null && n !== false));
     window.scrollTo(0, 0);
     root.focus();
   }
@@ -43,7 +44,6 @@
 
   // ---------- 開始画面 ----------
   function renderStart() {
-    const hasHistory = Storage.loadHistory().length > 0;
     mount(
       h("h1", null, "FOMOチェッカー"),
       h("p", { class: "tagline" }, "画面よりも、目の前の『今』を。"),
@@ -57,7 +57,7 @@
         )
       ),
       h("button", { class: "btn", onclick: startSurvey }, "アンケートを始める"),
-      hasHistory ? h("button", { class: "btn secondary", onclick: renderHistory }, "過去の結果を見る") : null,
+      h("button", { class: "btn secondary", onclick: renderHistory }, "過去の得点の推移"),
       footerNote()
     );
   }
@@ -237,7 +237,7 @@
         data: {
           labels: list.map((e) => fmtDate(e.date)),
           datasets: SCALES.map((s, i) => ({
-            label: s.short, data: list.map((e) => e[s.id]), borderColor: colors[i], backgroundColor: colors[i], tension: 0.2
+            label: s.short, data: list.map((e) => e[s.id]), borderColor: colors[i], backgroundColor: colors[i], tension: 0.2, pointRadius: 4
           }))
         },
         options: { responsive: true, maintainAspectRatio: false, scales: { y: { min: 1, max: 5, ticks: { stepSize: 1 } } } }
