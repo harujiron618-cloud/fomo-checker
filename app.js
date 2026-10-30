@@ -101,7 +101,6 @@
       renderStorageChooser(),
       h("button", { class: "btn", onclick: startSurvey }, "アンケートを始める"),
       h("button", { class: "btn secondary", onclick: renderHistory }, "過去の得点の推移"),
-      h("button", { class: "btn secondary", onclick: () => renderResearch(renderStart) }, "研究について"),
       footerNote()
     );
   }
@@ -221,8 +220,7 @@
       h("h2", null, "振り返りのヒント"),
       cards,
       fb.topFactorText ? h("div", { class: "card" }, h("h3", null, "3つの利用傾向の中で"), h("p", null, fb.topFactorText)) : null,
-      h("div", { class: "card" }, h("h3", null, "まとめ"), h("p", null, fb.summary)),
-      h("div", { class: "card" }, h("h3", null, "自分に問いかけてみよう"), h("p", null, ResearchInfo.reflectionPrompt)),
+      h("div", { class: "card" }, h("h3", null, "まとめ"), h("p", null, fb.summary), h("p", null, fb.researchHint), h("p", null, fb.reflectionPrompt)),
       aiArea,
       h("h2", null, "研究結果との関連"),
       h("p", null, "今回の研究では、3つのスマホ利用傾向の中で『ネットコミュニケーションへの没頭』がFOMOと最も強い関連を示しました。これは「一緒に高くなりやすい傾向」を示す結果であり、SNSがFOMOを引き起こすといった因果関係や、あなたの状態を決めるものではありません。"),
@@ -235,7 +233,6 @@
       saved ? h("p", { class: "muted" }, "今回の結果を「" + Storage.MODES[Storage.getMode()].label + "」に保存しました。") : h("p", { class: "muted" }, "この端末では結果を保存できませんでした。"),
       previous ? h("p", { class: "muted" }, describeChange(previous, scores)) : null,
       h("button", { class: "btn", onclick: renderHistory }, "過去の結果と見比べる"),
-      h("button", { class: "btn secondary", onclick: () => renderResearch(() => renderResult(scores, previous, saved)) }, "研究について詳しく見る"),
       h("button", { class: "btn secondary", onclick: renderStart }, "最初の画面へ"),
       footerNote()
     );
@@ -291,54 +288,6 @@
     }
   }
 
-  // ---------- 研究について ----------
-  // SVG要素の作成補助
-  function sv(tag, attrs, ...children) {
-    const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
-    Object.entries(attrs || {}).forEach(([k, v]) => el.setAttribute(k, v));
-    children.flat().forEach((c) => { if (c != null) el.append(c.nodeType ? c : document.createTextNode(String(c))); });
-    return el;
-  }
-
-  // 重回帰分析のパス図（線の太さはβの大きさに比例）
-  function buildPathDiagram() {
-    const shortNames = { f1: "F1 没頭", f2: "F2 優先・長時間", f3: "F3 ながら・マナー" };
-    const ys = [20, 82, 144];
-    const parts = [sv("title", null, "3つのスマホ利用傾向からFOMO得点へのパス図")];
-    RESEARCH.factors.forEach((f, i) => {
-      const y = ys[i];
-      parts.push(sv("line", { class: "path-line", x1: 150, y1: y + 18, x2: 232, y2: 100, "stroke-width": Math.max(1.5, parseFloat("0" + f.beta) * 12) }));
-      parts.push(sv("rect", { class: "svg-box", x: 6, y: y, width: 144, height: 36, rx: 8 }));
-      parts.push(sv("text", { class: "svg-text", x: 78, y: y + 23, "text-anchor": "middle" }, shortNames[f.id]));
-      parts.push(sv("text", { class: "svg-label", x: 192, y: (y + 18 + 100) / 2 + (i === 1 ? -6 : i === 0 ? -4 : 12), "text-anchor": "middle" }, "β=" + f.beta));
-    });
-    parts.push(sv("rect", { class: "svg-fomo", x: 232, y: 82, width: 82, height: 36, rx: 18 }));
-    parts.push(sv("text", { class: "svg-fomo-text", x: 273, y: 105, "text-anchor": "middle" }, "FOMO得点"));
-    return sv("svg", { viewBox: "0 0 320 190", role: "img", "aria-label": "パス図：F1が.35、F2が.22、F3が.14でFOMO得点と関連", class: "path-svg" }, parts);
-  }
-
-  function renderResearch(backFn) {
-    const statLine = "R²=" + RESEARCH.r2 + "　" + RESEARCH.f + "　" + RESEARCH.p;
-    mount(
-      h("h1", null, "研究について"),
-      h("p", null, ResearchInfo.intro),
-      h("h2", null, "1. スマホ利用の3つの傾向とFOMO"),
-      buildPathDiagram(),
-      h("ul", { class: "plain" }, RESEARCH.factors.map((f) => h("li", null, f.name + "：β=" + f.beta))),
-      h("p", { class: "muted" }, statLine),
-      h("p", null, ResearchInfo.regression),
-      h("h2", null, "2. 回答に多く現れた言葉"),
-      h("p", null, ResearchInfo.textMiningIntro),
-      ResearchInfo.themes.map((t) => h("div", { class: "card" }, h("h3", null, t.title), h("p", { class: "muted" }, t.words))),
-      h("h2", null, "3. 学年・性別・所属での比較"),
-      h("p", null, ResearchInfo.comparison),
-      h("h2", null, "4. 結果を読むときの注意"),
-      h("ul", { class: "plain" }, ResearchInfo.cautions.map((c) => h("li", null, c))),
-      h("button", { class: "btn", onclick: backFn }, "戻る"),
-      footerNote()
-    );
-  }
-
   // ---------- 生成AI接続口（サーバー経由） ----------
   async function fetchAiAdvice(payload) {
     const controller = new AbortController();
@@ -362,3 +311,4 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", renderStart);
   else renderStart();
 })();
+
