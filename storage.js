@@ -5,19 +5,20 @@
   const COOKIE_KEY = "fomoHistory";             // Cookie用キー
   const PREF_KEY = "fomoChecker.storageMode";   // 保存方法の選択を覚えるキー
   const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;    // Cookieの有効期間（1年）
+  const DEFAULT_MODE = "cookie";                // 初期の保存方法（クッキーが使えない環境では自動でlocalにする）
+  const MAX_ENTRIES = { local: 50, cookie: 30 };
 
   // 保存方法の定義（説明文はここで管理）
   const MODES = {
-    local: {
-      label: "ローカルストレージ",
-      description: "アプリ情報をデバイスに保存します。しかし使用時にダウンロードが必要です。"
-    },
     cookie: {
       label: "クッキー",
-      description: "アプリ情報をブラウザに保存します。しかしデータが消える可能性があります。"
+      description: "このブラウザのクッキーに保存します（最大" + MAX_ENTRIES.cookie + "回分・約1年間）。クッキーはこのサイトを開くたびに送信される仕組みですが、保存されるのは得点と日時だけです。ブラウザの設定でクッキーを消すと、履歴も消えます。"
+    },
+    local: {
+      label: "ローカルストレージ",
+      description: "この端末のブラウザの中だけに保存します（最大" + MAX_ENTRIES.local + "回分）。ブラウザのサイトデータを消すと、履歴も消えます。"
     }
   };
-  const MAX_ENTRIES = { local: 50, cookie: 30 };
 
   const isValidEntry = (e) =>
     e && typeof e.date === "string" && !isNaN(Date.parse(e.date)) &&
@@ -35,6 +36,13 @@
       const secure = location.protocol === "https:" ? "; Secure" : "";
       document.cookie = name + "=" + encodeURIComponent(value) + "; max-age=" + maxAge + "; path=/; SameSite=Lax" + secure;
     } catch (err) { /* 何もしない */ }
+  }
+  // クッキーが実際に使えるかを確認する
+  function cookieWorks() {
+    writeCookie("fomoTest", "1", 60);
+    const ok = readCookie("fomoTest") === "1";
+    writeCookie("fomoTest", "", 0);
+    return ok;
   }
 
   // ---------- 履歴の変換（Cookieは容量が小さいので短い形式にする） ----------
@@ -58,24 +66,25 @@
   }
 
   // ---------- 保存方法の選択 ----------
+  // 初期の保存方法。クッキーの動作確認は1回だけ行い、結果を覚えておく
+  let defaultModeCache = null;
+  function getDefaultMode() {
+    if (defaultModeCache === null) {
+      defaultModeCache = DEFAULT_MODE === "cookie" && !cookieWorks() ? "local" : DEFAULT_MODE;
+    }
+    return defaultModeCache;
+  }
   function getMode() {
     let v = "";
     try { v = localStorage.getItem(PREF_KEY) || ""; } catch (err) { /* 何もしない */ }
     if (!v) v = readCookie(PREF_KEY);
-    if (MODES[v]) return v;
-    // 初期設定はクッキー。ただしクッキーが使えない環境（file://で開いた場合など）ではローカルストレージにする
-    return cookieWorks() ? "cookie" : "local";
+    return MODES[v] ? v : getDefaultMode();
   }
-  // クッキーが実際に使えるかを確認する
-  function cookieWorks() {
-    writeCookie("fomoTest", "1", 60);
-    const ok = readCookie("fomoTest") === "1";
-    writeCookie("fomoTest", "", 0);
-    return ok;
-  }
+  // 選んだ保存方法を覚える（Cookieを選んだときだけ、Cookieにも設定を残す）
   function savePref(mode) {
     try { localStorage.setItem(PREF_KEY, mode); } catch (err) { /* 何もしない */ }
-    writeCookie(PREF_KEY, mode, COOKIE_MAX_AGE);
+    if (mode === "cookie") writeCookie(PREF_KEY, mode, COOKIE_MAX_AGE);
+    else writeCookie(PREF_KEY, "", 0);
   }
 
   // ---------- 方法ごとの読み書き ----------
@@ -106,8 +115,9 @@
   // 保存方法を切り替える。これまでの履歴は新しい方法へ移す。成功したらtrue
   function setMode(newMode) {
     if (!MODES[newMode]) return false;
+    if (newMode === "cookie" && !cookieWorks()) return false; // クッキーが使えない環境
     const oldMode = getMode();
-    if (newMode === oldMode) return true;
+    if (newMode === oldMode) { savePref(newMode); return true; }
     const oldList = readList(oldMode);
     if (oldList.length > 0 && !writeList(newMode, oldList)) {
       clearMode(newMode); // 失敗したら元の方法のまま

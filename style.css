@@ -42,7 +42,7 @@ ul.plain { padding-left: 1.2em; margin: 8px 0; }
 fieldset.question { border: 1px solid var(--line); border-radius: 12px; margin: 14px 0; padding: 12px; }
 fieldset.question legend { padding: 0 6px; font-weight: 700; }
 .choices { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 8px; }
-.choices label { cursor: pointer; }
+.choices label { cursor: pointer; position: relative; }
 .choices input { position: absolute; opacity: 0; }
 .choices span {
   display: block; text-align: center; padding: 12px 0; border: 2px solid var(--line);
@@ -51,18 +51,15 @@ fieldset.question legend { padding: 0 6px; font-weight: 700; }
 .choices input:checked + span { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .scale-hint { display: flex; justify-content: space-between; font-size: .78rem; color: var(--muted); margin-top: 4px; }
 
-/* 結果バー */
-.bar-row { margin: 12px 0; }
-.bar-label { display: flex; justify-content: space-between; font-size: .95rem; }
-.bar-track { height: 14px; background: var(--line); border-radius: 7px; overflow: hidden; }
-.bar-fill { height: 100%; background: var(--accent); }
-
 /* 履歴 */
 .chart-box { position: relative; height: 260px; }
+.chart-box.radar { height: min(92vw, 360px); } /* レーダーチャートは正方形に近い領域にする */
 table { width: 100%; border-collapse: collapse; font-size: .85rem; }
 th, td { padding: 6px 4px; border-bottom: 1px solid var(--line); text-align: right; }
 th:first-child, td:first-child { text-align: left; }
 .table-wrap { overflow-x: auto; }
+caption { text-align: left; padding: 4px 0; }
+tbody th { font-weight: 400; }
 details summary { cursor: pointer; color: var(--accent); }
 
 /* 保存方法の選択 */

@@ -33,16 +33,20 @@
     else return "high";
   }
 
-  // F1・F2・F3のうち本人の中で相対的に高い因子を判定（差が小さければnull）
-  function getTopFactor(scores) {
+  // F1・F2・F3のうち本人の中で相対的に高い因子を判定する
+  // 戻り値は因子IDの配列。最高値が同点なら複数、差が小さければ空配列
+  function getTopFactors(scores) {
     const f1 = scores.f1, f2 = scores.f2, f3 = scores.f3;
     const range = Math.max(f1, f2, f3) - Math.min(f1, f2, f3);
-    if (range < NO_DIFFERENCE_RANGE) return null;
-    if (f1 >= f2 && f1 >= f3) return "f1";
-    else if (f2 >= f3) return "f2";
-    else return "f3";
+    if (range < NO_DIFFERENCE_RANGE) return [];
+    if (f1 > f2 && f1 > f3) return ["f1"];
+    else if (f2 > f1 && f2 > f3) return ["f2"];
+    else if (f3 > f1 && f3 > f2) return ["f3"];
+    else if (f1 === f2 && f1 > f3) return ["f1", "f2"];
+    else if (f1 === f3 && f1 > f2) return ["f1", "f3"];
+    else return ["f2", "f3"]; // f2 と f3 が同点で最高
   }
 
   window.FomoApp = window.FomoApp || {};
-  window.FomoApp.Scoring = { validateAnswers, calcScores, getLevel, getTopFactor, LEVEL_THRESHOLDS, NO_DIFFERENCE_RANGE };
+  window.FomoApp.Scoring = { validateAnswers, calcScores, getLevel, getTopFactors, LEVEL_THRESHOLDS, NO_DIFFERENCE_RANGE };
 })();

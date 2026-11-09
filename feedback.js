@@ -1,7 +1,11 @@
 // フィードバック文の生成（ルールベース。AIの有無で判定は変えない）
 (function () {
   "use strict";
-  const { Scoring } = window.FomoApp;
+  const { Scoring, RESEARCH } = window.FomoApp;
+
+  // 研究結果のβ値は questions.js の RESEARCH から取得（数値の二重管理を避ける）
+  const BETA = {};
+  RESEARCH.factors.forEach((f) => { BETA[f.id] = f.beta; });
 
   const LEVEL_LABEL = { low: "比較的低い傾向", mid: "中程度", high: "比較的高い傾向" };
 
@@ -14,7 +18,7 @@
     f1: {
       low: "ネット上のコミュニケーションへの没頭は比較的低い傾向でした。SNSを連絡や交流の手段として活用しながら、直接会話する時間も大切にしてみましょう。",
       mid: "ネット上のコミュニケーションとの関わり方を振り返ってみましょう。返信や通知を気にする場面があるか、自分の使い方を意識してみることも大切です。",
-      high: "ネット上のコミュニケーションへの没頭が比較的高い傾向でした。今回の研究では、この因子がFOMOと最も強く関連していました（β=.35）。SNSを確認したくなったとき、自分の気持ちや状況を一度振り返ってみましょう。"
+      high: "ネット上のコミュニケーションへの没頭が比較的高い傾向でした。今回の研究では、この因子がFOMOと最も強く関連していました（β=" + BETA.f1 + "）。SNSを確認したくなったとき、自分の気持ちや状況を一度振り返ってみましょう。"
     },
     f2: {
       low: "スマホを優先したり、長時間使用したりする傾向は比較的低い結果でした。今の生活リズムを大切にしながら、必要なときにスマホを活用しましょう。",
@@ -30,7 +34,7 @@
 
   // 「3因子の中で相対的に高い因子」の基本フィードバック
   const TOP_FACTOR_TEXT = {
-    f1: "今回の回答では『ネットコミュニケーションへの没頭』が3因子の中で相対的に高くなりました。今回の研究では、この因子がFOMOと最も強い関連（β=.35）を示しました。ただし関連であり、原因と結果を示すものではありません。",
+    f1: "今回の回答では『ネットコミュニケーションへの没頭』が3因子の中で相対的に高くなりました。今回の研究では、この因子がFOMOと最も強い関連（β=" + BETA.f1 + "）を示しました。ただし関連であり、原因と結果を示すものではありません。",
     f2: "今回の回答では『スマホの優先と長時間使用』が3因子の中で相対的に高くなりました。スマホを優先する場面や使う時間について、ほかの活動とのバランスを振り返ってみましょう。",
     f3: "今回の回答では『ながらスマホとマナーの軽視』が3因子の中で相対的に高くなりました。ながらスマホをしがちな場面や、周囲への配慮について振り返ってみましょう。"
   };
@@ -54,34 +58,34 @@
   };
   const REFLECTION_PROMPT = "あなたにとってスマホは、どんな場面で役に立っていますか？ そのとき、自分はどんな気持ちでしょうか？";
 
-  // 相対的に高い因子とFOMOの段階に応じた視点を作る
-  function pickResearchHint(levels, top) {
-    const base = top ? RESEARCH_HINTS[top] : RESEARCH_HINTS.general;
+  // 相対的に高い因子が1つだけのときはその視点、同点・差なしのときは全体向けの視点にする
+  function pickResearchHint(levels, tops) {
+    const base = tops.length === 1 ? RESEARCH_HINTS[tops[0]] : RESEARCH_HINTS.general;
     return levels.fomo === "high" ? base + RESEARCH_HINTS.fomoHigh : base;
   }
 
   // 総合コメントの選択（FOMOが比較的高く、かつ相対的に高い因子も比較的高い場合に組み合わせ文）
-  function pickSummary(levels, top) {
-    if (top === null) return SUMMARY.none;
-    else if (levels.fomo === "high" && levels[top] === "high") return SUMMARY[top];
-    else return SUMMARY.fallback;
+  function pickSummary(levels, tops) {
+    if (tops.length === 0) return SUMMARY.none;
+    const matched = tops.find((id) => levels.fomo === "high" && levels[id] === "high");
+    return matched ? SUMMARY[matched] : SUMMARY.fallback;
   }
 
   // 得点からフィードバック一式を作る
   function build(scores) {
     const levels = {};
     ["fomo", "f1", "f2", "f3"].forEach((id) => { levels[id] = Scoring.getLevel(scores[id]); });
-    const top = Scoring.getTopFactor(scores);
+    const tops = Scoring.getTopFactors(scores);
     return {
       levels: levels,
-      topFactor: top,
+      topFactors: tops,
       byScale: {
         fomo: TEMPLATES.fomo[levels.fomo], f1: TEMPLATES.f1[levels.f1],
         f2: TEMPLATES.f2[levels.f2], f3: TEMPLATES.f3[levels.f3]
       },
-      topFactorText: top ? TOP_FACTOR_TEXT[top] : null,
-      summary: pickSummary(levels, top),
-      researchHint: pickResearchHint(levels, top),
+      topFactorTexts: tops.map((id) => TOP_FACTOR_TEXT[id]),
+      summary: pickSummary(levels, tops),
+      researchHint: pickResearchHint(levels, tops),
       reflectionPrompt: REFLECTION_PROMPT
     };
   }
