@@ -37,6 +37,12 @@
     return el;
   }
 
+  // 文中の {{...}} で囲んだ部分を、重要な文として強調表示（赤いアンダーライン）にする
+  // テキストノードだけを作るので、文字列に含まれるHTMLは実行されない
+  function rich(text) {
+    return String(text).split(/\{\{(.+?)\}\}/g).map((part, i) => (i % 2 === 1 ? h("span", { class: "key" }, part) : part));
+  }
+
   // 画面を差し替える
   function mount(...nodes) {
     if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
@@ -50,7 +56,7 @@
     new Date(iso).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
 
   const footerNote = () =>
-    h("p", { class: "muted" }, "このアプリは診断ツールではありません。回答は、スマホやSNSとの関わり方を振り返るための参考です。結果はこの端末のブラウザに保存され、名前などの個人情報は集めません。");
+    h("p", { class: "muted" }, rich("{{このアプリは診断ツールではありません。}}回答は、スマホやSNSとの関わり方を振り返るための参考です。結果はこの端末のブラウザに保存され、名前などの個人情報は集めません。"));
 
   // ---------- グラフの共通設定 ----------
   const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -120,13 +126,13 @@
     mount(
       h("h1", null, "FOMOチェッカー"),
       h("p", { class: "tagline" }, "画面よりも、目の前の『今』を。"),
-      h("p", null, "全" + QUESTIONS.length + "問・5段階で回答します（5分ほど）。正解や点数の良し悪しはありません。スマホやSNSとの関わり方を、自分のペースで振り返るためのアプリです。"),
+      h("p", null, rich("全" + QUESTIONS.length + "問・5段階で回答します（5分ほど）。{{正解や点数の良し悪しはありません。}}スマホやSNSとの関わり方を、自分のペースで振り返るためのアプリです。")),
       h("div", { class: "card" },
         h("h3", null, "はじめる前に"),
         h("ul", { class: "plain" },
           h("li", null, "名前・学校名・メールアドレスなどは入力しません。"),
           h("li", null, "回答の履歴は、この端末のブラウザに保存されます（保存方法は右上の設定で選べます）。"),
-          h("li", null, "SNSやスマホを否定するものではありません。")
+          h("li", null, rich("{{SNSやスマホを否定するものではありません。}}"))
         )
       ),
       h("button", { class: "btn", onclick: startSurvey }, "アンケートを始める"),
@@ -213,11 +219,12 @@
   }
 
   // ---------- 結果画面 ----------
-  // レーダーチャート：今回の回答と研究参加者の平均を重ねて表示する
+  // レーダーチャート：今回の回答と参加者全体の平均を重ねて表示する（中心が1点、外側が5点）
   function drawRadar(canvas, scores) {
     const sample = RESEARCH.sample;
     const accent = cssVar("--accent");
     const muted = cssVar("--muted");
+    const gridColor = withAlpha(muted, "59"); // 目盛り線は少し濃くして読み取りやすくする
     applyChartTheme();
     return new window.Chart(canvas, {
       type: "radar",
@@ -225,7 +232,7 @@
         labels: SCALES.map((s) => s.short),
         datasets: [
           // 色だけに頼らないよう、平均は破線・ひし形の点で区別する
-          { label: "あなたの今回の回答", data: SCALES.map((s) => scores[s.id]),
+          { label: "あなたの平均点", data: SCALES.map((s) => scores[s.id]),
             borderColor: accent, backgroundColor: withAlpha(accent, "33"), borderWidth: 2, pointRadius: 4, pointBackgroundColor: accent },
           { label: sample.label, data: SCALES.map((s) => sample.means[s.id]),
             borderColor: muted, backgroundColor: "transparent", borderWidth: 2, borderDash: [6, 4], pointRadius: 4, pointStyle: "rectRot", pointBackgroundColor: muted }
@@ -234,8 +241,17 @@
       options: {
         responsive: true, maintainAspectRatio: false,
         animation: prefersReducedMotion() ? false : { duration: 400 },
-        scales: { r: { min: 1, max: 5, ticks: { stepSize: 1, backdropColor: "transparent" }, pointLabels: { font: { size: 12 } } } },
-        plugins: { legend: { position: "bottom" } }
+        layout: { padding: 6 },
+        scales: {
+          r: {
+            min: 1, max: 5,
+            // 目盛りの数字は中心(1)と外側(5)だけにして、グラフと重なりにくくする
+            ticks: { stepSize: 1, backdropColor: "transparent", callback: (v) => (v === 1 || v === 5 ? v : "") },
+            grid: { color: gridColor }, angleLines: { color: gridColor },
+            pointLabels: { color: cssVar("--text"), font: { size: 12 } }
+          }
+        },
+        plugins: { legend: { position: "bottom", labels: { padding: 18 } } }
       }
     });
   }
@@ -259,7 +275,7 @@
     return h("div", { class: "table-wrap" },
       h("table", null,
         h("caption", { class: "muted" }, "平均点（1〜5）の比較"),
-        h("thead", null, h("tr", null, h("th", { scope: "col" }, "項目"), h("th", { scope: "col" }, "あなた"), h("th", { scope: "col" }, sample.label))),
+        h("thead", null, h("tr", null, h("th", { scope: "col" }, "項目"), h("th", { scope: "col" }, "あなたの平均点"), h("th", { scope: "col" }, sample.label))),
         h("tbody", null, rows)));
   }
 
@@ -272,33 +288,48 @@
       h("p", null, ResearchInfo.textMiningIntro),
       h("ul", { class: "plain" }, ResearchInfo.themes.map((t) => h("li", null, t.title + "（" + t.words + "）"))),
       h("p", null, ResearchInfo.comparison),
-      h("ul", { class: "plain" }, ResearchInfo.cautions.map((c) => h("li", null, c)))
+      h("ul", { class: "plain" }, ResearchInfo.cautions.map((c) => h("li", null, rich(c))))
     );
   }
 
   function renderResult(scores, previous, saved) {
     const fb = Feedback.build(scores);
     const sample = RESEARCH.sample;
+    // グラフ上の略称と正式名称の対応（F1などの記号は使わない）
+    const abbrevNote = "グラフの項目名は略称です（" +
+      SCALES.filter((s) => s.id !== "fomo").map((s) => s.short + "＝" + s.label).join("、") + "）。";
 
     const canvas = h("canvas", { role: "img", "aria-label": radarAltText(scores) });
     const radarBox = window.Chart
       ? h("div", { class: "chart-box radar" }, canvas)
       : h("p", { class: "muted" }, "グラフを読み込めませんでした。下の表で確認できます。");
 
+    // 4つの項目ごとの振り返り（折りたたみ）
     const cards = SCALES.map((s) =>
       h("div", { class: "card" },
         h("h3", null, s.label + "：" + Feedback.LEVEL_LABEL[fb.levels[s.id]]),
-        h("p", null, fb.byScale[s.id])
+        h("p", null, rich(fb.byScale[s.id]))
       )
     );
+    const scaleDetails = h("details", null,
+      h("summary", null, "4つの項目ごとの振り返りを見る"),
+      h("p", { class: "muted" }, rich("「比較的低い・中程度・比較的高い」は、1〜5点を3つに分けた文章切り替え用の目安です。{{他の人との比較や、正式な基準ではありません。}}")),
+      cards);
 
     // 相対的に高い因子（同点なら複数）の基本フィードバック
     const topCard = fb.topFactorTexts.length > 0
-      ? h("div", { class: "card" },
+      ? h("div", { class: "card key-card" },
           h("h3", null, "3つの利用傾向の中で"),
           fb.topFactorTexts.length > 1 ? h("p", { class: "muted" }, "同じくらい高い因子が複数ありました。") : null,
-          fb.topFactorTexts.map((t) => h("p", null, t)))
+          fb.topFactorTexts.map((t) => h("p", null, rich(t))),
+          h("p", { class: "muted" }, rich("{{この判定は、あなたの3つの得点どうしを比べたもので、参加者全体の平均との比較ではありません。}}")))
       : null;
+
+    const reflectCard = h("div", { class: "card" },
+      h("h3", null, "振り返りのために"),
+      h("p", null, rich(fb.summary)),
+      h("p", null, rich(fb.researchHint)),
+      h("p", { class: "reflect" }, fb.reflectionPrompt));
 
     const researchRows = RESEARCH.factors.map((f) => h("li", null, f.name + "：β=" + f.beta));
 
@@ -318,28 +349,34 @@
       aiArea.append(btn, out, h("p", { class: "muted" }, "AIの文章は診断ではなく、振り返りのヒントです。送信されるのは得点と段階のみで、個人情報は含まれません。"));
     }
 
+    const saveNote = saved
+      ? h("p", { class: "save-note" }, "今回の結果をこの端末のブラウザ（" + Storage.MODES[Storage.getMode()].label + "）に保存しました。削除は「過去の結果」画面からできます。")
+      : h("p", { class: "save-note" }, "この端末では結果を保存できませんでした。");
+
     mount(
       h("h1", null, "あなたの回答傾向"),
-      h("p", { class: "muted" }, "点数は平均（1〜5）です。良い・悪いを示すものではなく、今回の回答の傾向を表しています。"),
+      h("p", { class: "muted" }, rich("点数は、各項目の回答の平均点（1〜5）です。{{良い・悪いを示すものではなく、今回の回答の傾向を表しています。}}")),
       radarBox,
-      h("p", { class: "muted" }, "破線は" + sample.label + "（n=" + sample.n + "）です。平均は基準値や正常範囲ではなく、平均との違いは良い・悪いを示すものではありません。"),
+      h("p", { class: "muted" }, rich("破線は" + sample.label + "（n=" + sample.n + "）です。グラフの中心が1点、外側が5点です。{{平均は基準値や正常範囲ではなく、平均との違いは良い・悪いを示すものではありません。}}")),
+      h("p", { class: "muted" }, abbrevNote),
       buildCompareTable(scores),
-      h("h2", null, "振り返りのヒント"),
-      h("p", { class: "muted" }, "「比較的低い・中程度・比較的高い」は、1〜5点を3つに分けた文章切り替え用の目安です。他の人との比較や、正式な基準ではありません。"),
-      cards,
+      h("h2", null, "振り返りのポイント"),
       topCard,
-      h("div", { class: "card" }, h("h3", null, "まとめ"), h("p", null, fb.summary), h("p", null, fb.researchHint), h("p", null, fb.reflectionPrompt)),
+      reflectCard,
+      scaleDetails,
       aiArea,
       h("h2", null, "研究結果との関連"),
-      h("p", null, "今回の研究では、3つのスマホ利用傾向の中で『ネットコミュニケーションへの没頭』がFOMOと最も強い関連を示しました。これは「一緒に高くなりやすい傾向」を示す結果であり、SNSがFOMOを引き起こすといった因果関係や、あなたの状態を決めるものではありません。"),
+      h("p", null, rich("{{今回の研究では、3つのスマホ利用傾向の中で『ネットコミュニケーションへの没頭』がFOMOと最も強い関連を示しました。}}これは「一緒に高くなりやすい傾向」を示す結果であり、{{SNSがFOMOを引き起こすといった因果関係や、あなたの状態を決めるものではありません。}}")),
       h("details", null,
         h("summary", null, "詳しい数値を見る"),
         h("p", { class: "muted" }, "FOMO得点を目的変数とした重回帰分析の結果（標準化係数）"),
         h("ul", { class: "plain" }, researchRows),
-        h("p", null, "R²=" + RESEARCH.r2 + "　" + RESEARCH.f + "　" + RESEARCH.p)
+        h("p", null, "R²=" + RESEARCH.r2 + "　" + RESEARCH.f + "　" + RESEARCH.p),
+        h("p", { class: "muted" }, "数値の読み方"),
+        h("ul", { class: "plain muted" }, ResearchInfo.statGuide.map((t) => h("li", null, t)))
       ),
       buildResearchDetails(),
-      saved ? h("p", { class: "muted" }, "今回の結果を「" + Storage.MODES[Storage.getMode()].label + "」に保存しました。") : h("p", { class: "muted" }, "この端末では結果を保存できませんでした。"),
+      saveNote,
       previous ? h("p", { class: "muted" }, describeChange(previous, scores)) : null,
       h("button", { class: "btn", onclick: renderHistory }, "過去の結果と見比べる"),
       h("button", { class: "btn secondary", onclick: renderStart }, "最初の画面へ"),
@@ -375,7 +412,7 @@
 
     mount(
       h("h1", null, "過去の結果"),
-      h("p", { class: "muted" }, "回答傾向の推移です。数値の増減は良し悪しを表すものではありません。"),
+      h("p", { class: "muted" }, rich("回答傾向の推移です。{{数値の増減は良し悪しを表すものではありません。}}")),
       h("div", { class: "chart-box" }, canvas),
       list.length >= 2 ? h("p", null, describeChange(list[list.length - 2], list[list.length - 1])) : h("p", { class: "muted" }, "2回以上回答すると、前回との比較が表示されます。"),
       h("div", { class: "table-wrap" },
