@@ -101,6 +101,74 @@
     return tops.length === 0 ? SUMMARY.none : SUMMARY.other;
   }
 
+  // ④ 「今回の回答のまとめ」：自分の得点・参加者全体の平均・研究結果を、短い1つの文章にまとめる
+  //   文末の「ただし〜」の文は重要な文として強調される（{{ }}）
+  const SAME_RANGE = 0.1; // 参加者全体の平均との差がこの値未満なら「ほぼ同じ」とする
+  const FACTOR_IDS = ["f1", "f2", "f3"];
+  const FACTOR_NAME = {};
+  RESEARCH.factors.forEach((f) => { FACTOR_NAME[f.id] = f.name; });
+  const quoteNames = (ids) => ids.map((id) => "「" + FACTOR_NAME[id] + "」").join("と");
+
+  function buildOverview(scores, tops) {
+    const sample = RESEARCH.sample;
+    const mean = sample.means.fomo;
+    const diff = scores.fomo - mean;
+    const compare = Math.abs(diff) < SAME_RANGE ? "とほぼ同じであった" : (diff > 0 ? "を上回った" : "を下回った");
+    const s1 = "今回の回答では、FOMO得点は" + scores.fomo.toFixed(2) + "で、" + sample.label + "（" + mean.toFixed(2) + "）" + compare + "。";
+
+    let s2;
+    if (tops.length === 0) {
+      s2 = "また、スマホ利用傾向では、3つの傾向の間に大きな差は見られなかった。";
+    } else {
+      // 差が0.5以上あるとき、最高の因子と最低の因子は必ず別なので、lowsは空にならない
+      const min = Math.min(...FACTOR_IDS.map((id) => scores[id]));
+      const lows = FACTOR_IDS.filter((id) => scores[id] === min && !tops.includes(id));
+      s2 = "また、スマホ利用傾向では" + quoteNames(tops) + "が相対的に高く、" + quoteNames(lows) + "は低い傾向を示した。";
+    }
+
+    // 研究結果：βがいちばん大きい因子（研究全体の結果。個人の結果ではない）
+    const strongest = RESEARCH.factors.slice().sort((a, b) => parseFloat(b.beta) - parseFloat(a.beta))[0];
+    const pct = Math.round(parseFloat(RESEARCH.r2) * 100);
+    const s3 = "一方、参加者全体の重回帰分析では、「" + strongest.name + "」（β＝" + strongest.beta + "）がFOMOと最も強い関連を示し、3因子による説明率は" + pct + "％であった。";
+    const s4 = "{{ただし、これは集団全体の関連を示す結果であり、個人のFOMOの原因や因果関係を示すものではない。}}";
+    return s1 + s2 + s3 + s4;
+  }
+
+  // ⑤ 4つの項目（FOMO・3因子）の振り返りを1つにまとめた文章（得点によって変わらない共通の文）
+  const REFLECTION_GUIDE = "今回の回答を通して、SNS上の情報に対する心理的関心やオンラインコミュニケーションへの関与、スマホの使用時間・優先順位、利用場面におけるマナーなど、自身のスマホ利用傾向を振り返る。スマホを使用する状況や心理状態、学習・睡眠・他者との交流への影響を踏まえ、日常生活におけるスマホとの適切な関わり方について考える。";
+
+  // ⑥ 振り返りのあとに、日常で試せる工夫（質問の内容に対応。因子ごとに2つずつ）
+  //   試すかどうかは本人が決めることなので、「〜してみる」という提案の形にする
+  const TIPS = {
+    f1: [ // ネットコミュニケーションへの没頭（返信・通知・スマホ以外の楽しみ）
+      "返信や通知が気になるときは、通知を切って、連絡を確認する時間（例：休み時間と帰宅後）を決めてみる。",
+      "スマホ以外で楽しめること（趣味・運動・読書など）を1つ、今週のうちに試してみる。"
+    ],
+    f2: [ // スマホの優先と長時間使用（学業・夜更かし・使う時間）
+      "寝る前は、スマホを枕元から離れた場所で充電し、布団の中では使わないようにしてみる。",
+      "勉強や宿題のあいだは、スマホをカバンの中や別の部屋に置き、終わってから確認してみる。"
+    ],
+    f3: [ // ながらスマホとマナーの軽視（会話中・食事中・歩行中）
+      "食事中や友人・家族と話しているときは、スマホをカバンにしまうか、画面を伏せて置いてみる。",
+      "歩いているときは、立ち止まってから画面を見るようにしてみる。"
+    ]
+  };
+  const TIPS_NOTE = "全部を試す必要はありません。気になるものを1つ選んで、1週間ほど続けてみましょう。合わないと感じたら、自分に合う方法を探してかまいません。試したあとにもう一度回答すると、自分の回答の変化を見比べることができます。";
+
+  // 提示する工夫を2〜3個選ぶ
+  //  ・相対的に高い因子が1つ：その因子の2つ ＋ 次に得点が高い因子の1つ
+  //  ・相対的に高い因子が2つ：それぞれ1つずつ
+  //  ・明確な差がないとき：3因子から1つずつ
+  function pickTips(scores, tops) {
+    if (tops.length === 0) return FACTOR_IDS.map((id) => TIPS[id][0]);
+    if (tops.length === 1) {
+      const second = FACTOR_IDS.filter((id) => id !== tops[0])
+        .sort((a, b) => scores[b] - scores[a])[0]; // 同点のときは f1, f2, f3 の順
+      return [TIPS[tops[0]][0], TIPS[tops[0]][1], TIPS[second][0]];
+    }
+    return tops.map((id) => TIPS[id][0]);
+  }
+
   // 得点からフィードバック一式を作る
   function build(scores) {
     const levels = {};
@@ -115,6 +183,10 @@
       },
       topFactorTexts: tops.map((id) => TOP_FACTOR[id]),
       topFactorCaution: tops.length > 0 ? TOP_FACTOR_CAUTION : null,
+      overview: buildOverview(scores, tops),
+      guide: REFLECTION_GUIDE,
+      tips: pickTips(scores, tops),
+      tipsNote: TIPS_NOTE,
       summary: pickSummary(levels, tops),
       researchHint: pickResearchHint(levels, tops),
       reflectionPrompt: REFLECTION_PROMPT

@@ -37,7 +37,7 @@
     return el;
   }
 
-  // 文中の {{...}} で囲んだ部分を、重要な文として強調表示（赤いアンダーライン）にする
+  // 文中の {{...}} で囲んだ部分を、重要な文（class="key"）にする。太字になるのは、まとめ・振り返りの枠（class="emph"）の中だけ（style.css参照）
   // テキストノードだけを作るので、文字列に含まれるHTMLは実行されない
   function rich(text) {
     return String(text).split(/\{\{(.+?)\}\}/g).map((part, i) => (i % 2 === 1 ? h("span", { class: "key" }, part) : part));
@@ -57,8 +57,8 @@
 
   const footerNote = () =>
     h("div", null,
-      h("p", { class: "muted" }, rich("{{このアプリは診断ツールではありません。}}回答は、スマホやSNSとの関わり方を振り返るための参考です。結果はこの端末のブラウザに保存され、名前などの個人情報は集めません。")),
-      h("p", { class: "muted" }, "スマホやSNSのことで気になることや困っていることがあれば、家族や先生、学校の相談窓口など、信頼できる人にも話してみてください。"));
+      h("p", { class: "note" }, rich("{{このアプリは診断ツールではありません。}}回答は、スマホやSNSとの関わり方を振り返るための参考です。結果はこの端末のブラウザに保存され、名前などの個人情報は集めません。")),
+      h("p", { class: "note" }, "スマホやSNSのことで気になることや困っていることがあれば、家族や先生、学校の相談窓口など、信頼できる人にも話してみてください。"));
 
   // ---------- グラフの共通設定 ----------
   const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -92,7 +92,7 @@
     });
     const card = h("div", { class: "card" },
       h("h3", null, "結果の保存方法"),
-      h("p", { class: "muted" }, "どちらも、名前などの個人情報は保存されません。あとからいつでも変更できます。"),
+      h("p", { class: "note" }, "どちらも、名前などの個人情報は保存されません。あとからいつでも変更できます。"),
       rows, message);
     return card;
   }
@@ -289,8 +289,8 @@
       h("p", null, ResearchInfo.textMiningIntro),
       h("ul", { class: "plain" }, ResearchInfo.themes.map((t) => h("li", null, t.title + "（" + t.words + "）"))),
       h("p", null, ResearchInfo.comparison),
-      h("p", null, ResearchInfo.scaleNote),
-      h("ul", { class: "plain" }, ResearchInfo.cautions.map((c) => h("li", null, rich(c))))
+      h("p", { class: "note" }, ResearchInfo.scaleNote),
+      h("ul", { class: "plain note" }, ResearchInfo.cautions.map((c) => h("li", null, rich(c))))
     );
   }
 
@@ -306,39 +306,26 @@
       ? h("div", { class: "chart-box radar" }, canvas)
       : h("p", { class: "muted" }, "グラフを読み込めませんでした。下の表で確認できます。");
 
-    // 4つの項目ごとの振り返り（折りたたみ）
-    const cards = SCALES.map((s) =>
-      h("div", { class: "card" },
-        h("h3", null, s.label + "：" + Feedback.LEVEL_LABEL[fb.levels[s.id]]),
-        h("p", null, rich(fb.byScale[s.id]))
-      )
-    );
-    const scaleDetails = h("details", null,
-      h("summary", null, "4つの項目ごとの振り返りを見る"),
-      h("p", { class: "muted" }, rich("「あてはまらない寄り・どちらともいえない前後・あてはまる寄り」は、平均点（1〜5）を3つに分けた文章切り替え用の目安です。{{他の人との比較や、診断・正式な基準ではありません。}}")),
-      cards);
-
-    // 相対的に高い因子（同点なら複数）：「あなたの回答」「研究全体の結果」「解釈の注意」を分けて示す
-    const topCard = fb.topFactorTexts.length > 0
-      ? h("div", { class: "card key-card" },
-          h("h3", null, "3つの利用傾向の中で"),
-          fb.topFactorTexts.length > 1 ? h("p", { class: "muted" }, "同じくらい高い因子が複数ありました。") : null,
-          fb.topFactorTexts.flatMap((t) => [
-            h("p", null, h("span", { class: "layer-tag" }, "あなたの回答"), rich(t.personal + t.reflect)),
-            h("p", null, h("span", { class: "layer-tag" }, "研究全体の結果"), t.study)
-          ]),
-          h("p", null, h("span", { class: "layer-tag" }, "解釈の注意"), rich(fb.topFactorCaution)),
-          h("p", { class: "muted" }, rich("{{この判定は、あなたの3つの得点どうしを比べたもので、参加者全体の平均との比較ではありません。}}")))
-      : null;
-
+    // 今回の回答のまとめ＋振り返りの問い（1枚のカード。重要な文だけ太字になる）
     const ctx = { fb: fb, scores: scores, previous: previous, saved: saved };
-    const reflectCard = h("div", { class: "card" },
-      h("h3", null, "振り返りのために"),
-      h("p", null, rich(fb.summary)),
-      h("p", null, rich(fb.researchHint)),
+    const reflectCard = h("div", { class: "card key-card emph" },
+      h("h3", null, "今回の回答のまとめ"),
+      h("p", null, rich(fb.overview)),
+      h("p", { class: "note" }, "「相対的に高い・低い」は、あなたの3つの利用傾向の得点どうしを比べたものです。参加者全体の平均は基準値ではなく、平均との違いは良い・悪いを示すものではありません。"),
       h("p", { class: "reflect" }, fb.reflectionPrompt),
       h("button", { class: "btn secondary", onclick: () => startReflection(ctx) }, "振り返りワークに進む（任意）"),
-      h("p", { class: "muted" }, "ワークの答えは保存も送信もされません。"));
+      h("p", { class: "note" }, "ワークの答えは保存も送信もされません。"));
+
+    // 4つの項目ごとの振り返りを1つにまとめた文章
+    const guideCard = h("div", { class: "card" },
+      h("h3", null, "振り返りのために"),
+      h("p", null, fb.guide));
+
+    // 振り返りのあとに、日常で試せる工夫（2〜3個）
+    const tipsCard = h("div", { class: "card" },
+      h("h3", null, "日常で試せる工夫"),
+      h("ul", { class: "plain" }, fb.tips.map((t) => h("li", null, t))),
+      h("p", { class: "note" }, fb.tipsNote));
 
     const researchRows = RESEARCH.factors.map((f) => h("li", null, f.name + "：β=" + f.beta));
 
@@ -355,7 +342,7 @@
         }
         btn.disabled = false;
       });
-      aiArea.append(btn, out, h("p", { class: "muted" }, "AIの文章は診断ではなく、振り返りのヒントです。送信されるのは得点と段階のみで、個人情報は含まれません。"));
+      aiArea.append(btn, out, h("p", { class: "note" }, "AIの文章は診断ではなく、振り返りのヒントです。送信されるのは得点と段階のみで、個人情報は含まれません。"));
     }
 
     const saveNote = saved
@@ -364,15 +351,15 @@
 
     mount(
       h("h1", null, "あなたの回答傾向"),
-      h("p", { class: "muted" }, rich("点数は、各項目の回答の平均点（1〜5）です。{{良い・悪いを示すものではなく、今回の回答の傾向を表しています。}}")),
+      h("p", { class: "note" }, rich("点数は、各項目の回答の平均点（1〜5）です。{{良い・悪いを示すものではなく、今回の回答の傾向を表しています。}}")),
       radarBox,
-      h("p", { class: "muted" }, rich("破線は" + sample.label + "（n=" + sample.n + "）です。グラフの中心が1点、外側が5点です。{{平均は基準値や正常範囲ではなく、平均との違いは良い・悪いを示すものではありません。}}")),
-      h("p", { class: "muted" }, abbrevNote),
+      h("p", { class: "note" }, rich("破線は" + sample.label + "（n=" + sample.n + "）です。グラフの中心が1点、外側が5点です。{{平均は基準値や正常範囲ではなく、平均との違いは良い・悪いを示すものではありません。}}")),
+      h("p", { class: "note" }, abbrevNote),
       buildCompareTable(scores),
       h("h2", null, "振り返りのポイント"),
-      topCard,
       reflectCard,
-      scaleDetails,
+      guideCard,
+      tipsCard,
       aiArea,
       h("h2", null, "研究結果との関連"),
       h("p", null, rich(ResearchInfo.connection.intro + ResearchInfo.connection.ranking)),
@@ -429,7 +416,7 @@
 
   function renderReflection() {
     const total = reflect.steps.length;
-    const privacyNote = h("p", { class: "muted" }, "ここでの答えは、保存も送信もされません。この画面を閉じると消えます。");
+    const privacyNote = h("p", { class: "note" }, "ここでの答えは、保存も送信もされません。この画面を閉じると消えます。");
 
     // 最後まで終わったとき：選んだ「意識してみたいこと」を振り返って終わる
     if (reflect.index >= total) {
@@ -502,7 +489,7 @@
 
     mount(
       h("h1", null, "過去の結果"),
-      h("p", { class: "muted" }, rich("回答傾向の推移です。{{数値の増減は良し悪しを表すものではありません。}}")),
+      h("p", { class: "note" }, rich("回答傾向の推移です。{{数値の増減は良し悪しを表すものではありません。}}")),
       h("div", { class: "chart-box" }, canvas),
       list.length >= 2 ? h("p", null, describeChange(list[list.length - 2], list[list.length - 1])) : h("p", { class: "muted" }, "2回以上回答すると、前回との比較が表示されます。"),
       h("div", { class: "table-wrap" },
