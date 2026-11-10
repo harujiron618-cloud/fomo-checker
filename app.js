@@ -4,14 +4,14 @@
 
   // 必要なデータ・機能が読み込まれているかを確認（読み込み失敗時に白い画面にならないようにする）
   const App = window.FomoApp || {};
-  const REQUIRED = ["QUESTIONS", "SCALES", "SCALE_LABELS", "RESEARCH", "ResearchInfo", "Scoring", "Feedback", "Storage"];
+  const REQUIRED = ["QUESTIONS", "SCALES", "SCALE_LABELS", "RESEARCH", "ResearchInfo", "REFLECTIONS", "Scoring", "Feedback", "Storage"];
   const missing = REQUIRED.filter((key) => !App[key]);
   if (missing.length > 0) {
     console.error("読み込めなかった項目:", missing.join(", "));
     document.getElementById("app").textContent = "アプリを読み込めませんでした。ページを再読み込みしてください。";
     return;
   }
-  const { QUESTIONS, SCALES, SCALE_LABELS, RESEARCH, ResearchInfo, Scoring, Feedback, Storage } = App;
+  const { QUESTIONS, SCALES, SCALE_LABELS, RESEARCH, ResearchInfo, REFLECTIONS, Scoring, Feedback, Storage } = App;
 
   const PAGE_SIZE = 3; // 1ページの質問数
   const TOTAL_PAGES = Math.ceil(QUESTIONS.length / PAGE_SIZE);
@@ -56,7 +56,9 @@
     new Date(iso).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
 
   const footerNote = () =>
-    h("p", { class: "muted" }, rich("{{このアプリは診断ツールではありません。}}回答は、スマホやSNSとの関わり方を振り返るための参考です。結果はこの端末のブラウザに保存され、名前などの個人情報は集めません。"));
+    h("div", null,
+      h("p", { class: "muted" }, rich("{{このアプリは診断ツールではありません。}}回答は、スマホやSNSとの関わり方を振り返るための参考です。結果はこの端末のブラウザに保存され、名前などの個人情報は集めません。")),
+      h("p", { class: "muted" }, "スマホやSNSのことで気になることや困っていることがあれば、家族や先生、学校の相談窓口など、信頼できる人にも話してみてください。"));
 
   // ---------- グラフの共通設定 ----------
   const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -284,10 +286,10 @@
     return h("details", null,
       h("summary", null, "この研究について"),
       h("p", null, ResearchInfo.intro),
-      h("p", null, ResearchInfo.regression),
       h("p", null, ResearchInfo.textMiningIntro),
       h("ul", { class: "plain" }, ResearchInfo.themes.map((t) => h("li", null, t.title + "（" + t.words + "）"))),
       h("p", null, ResearchInfo.comparison),
+      h("p", null, ResearchInfo.scaleNote),
       h("ul", { class: "plain" }, ResearchInfo.cautions.map((c) => h("li", null, rich(c))))
     );
   }
@@ -313,23 +315,30 @@
     );
     const scaleDetails = h("details", null,
       h("summary", null, "4つの項目ごとの振り返りを見る"),
-      h("p", { class: "muted" }, rich("「比較的低い・中程度・比較的高い」は、1〜5点を3つに分けた文章切り替え用の目安です。{{他の人との比較や、正式な基準ではありません。}}")),
+      h("p", { class: "muted" }, rich("「あてはまらない寄り・どちらともいえない前後・あてはまる寄り」は、平均点（1〜5）を3つに分けた文章切り替え用の目安です。{{他の人との比較や、診断・正式な基準ではありません。}}")),
       cards);
 
-    // 相対的に高い因子（同点なら複数）の基本フィードバック
+    // 相対的に高い因子（同点なら複数）：「あなたの回答」「研究全体の結果」「解釈の注意」を分けて示す
     const topCard = fb.topFactorTexts.length > 0
       ? h("div", { class: "card key-card" },
           h("h3", null, "3つの利用傾向の中で"),
           fb.topFactorTexts.length > 1 ? h("p", { class: "muted" }, "同じくらい高い因子が複数ありました。") : null,
-          fb.topFactorTexts.map((t) => h("p", null, rich(t))),
+          fb.topFactorTexts.flatMap((t) => [
+            h("p", null, h("span", { class: "layer-tag" }, "あなたの回答"), rich(t.personal + t.reflect)),
+            h("p", null, h("span", { class: "layer-tag" }, "研究全体の結果"), t.study)
+          ]),
+          h("p", null, h("span", { class: "layer-tag" }, "解釈の注意"), rich(fb.topFactorCaution)),
           h("p", { class: "muted" }, rich("{{この判定は、あなたの3つの得点どうしを比べたもので、参加者全体の平均との比較ではありません。}}")))
       : null;
 
+    const ctx = { fb: fb, scores: scores, previous: previous, saved: saved };
     const reflectCard = h("div", { class: "card" },
       h("h3", null, "振り返りのために"),
       h("p", null, rich(fb.summary)),
       h("p", null, rich(fb.researchHint)),
-      h("p", { class: "reflect" }, fb.reflectionPrompt));
+      h("p", { class: "reflect" }, fb.reflectionPrompt),
+      h("button", { class: "btn secondary", onclick: () => startReflection(ctx) }, "振り返りワークに進む（任意）"),
+      h("p", { class: "muted" }, "ワークの答えは保存も送信もされません。"));
 
     const researchRows = RESEARCH.factors.map((f) => h("li", null, f.name + "：β=" + f.beta));
 
@@ -366,7 +375,9 @@
       scaleDetails,
       aiArea,
       h("h2", null, "研究結果との関連"),
-      h("p", null, rich("{{今回の研究では、3つのスマホ利用傾向の中で『ネットコミュニケーションへの没頭』がFOMOと最も強い関連を示しました。}}これは「一緒に高くなりやすい傾向」を示す結果であり、{{SNSがFOMOを引き起こすといった因果関係や、あなたの状態を決めるものではありません。}}")),
+      h("p", null, rich(ResearchInfo.connection.intro + ResearchInfo.connection.ranking)),
+      h("p", null, rich(ResearchInfo.connection.r2)),
+      h("p", null, rich(ResearchInfo.connection.caution)),
       h("details", null,
         h("summary", null, "詳しい数値を見る"),
         h("p", { class: "muted" }, "FOMO得点を目的変数とした重回帰分析の結果（標準化係数）"),
@@ -388,6 +399,85 @@
       try { chartInstance = drawRadar(canvas, scores); }
       catch (err) { console.error("レーダーチャートを描画できませんでした:", err); }
     }
+  }
+
+  // ---------- 振り返りワーク（任意。答えは画面内のメモリだけに置き、保存も送信もしない） ----------
+  const reflect = { ctx: null, steps: [], index: 0, picks: {} };
+
+  const factorName = (id) => SCALES.find((s) => s.id === id).label;
+
+  // 質問の順序：共通の質問 → 相対的に高かった因子の問い → 最後の質問
+  function buildReflectionSteps(fb) {
+    const steps = REFLECTIONS.common.map((q) => ({ kind: "choose", id: q.id, title: q.question, options: q.options }));
+    fb.topFactors.forEach((id) => steps.push({
+      kind: "think", id: id, title: "『" + factorName(id) + "』について、思い出してみましょう", prompts: REFLECTIONS.factors[id]
+    }));
+    steps.push({ kind: "choose", id: "final", title: REFLECTIONS.final.question, options: REFLECTIONS.final.options });
+    return steps;
+  }
+
+  function startReflection(ctx) {
+    reflect.ctx = ctx; reflect.steps = buildReflectionSteps(ctx.fb); reflect.index = 0; reflect.picks = {};
+    renderReflection();
+  }
+
+  function leaveReflection() {
+    const ctx = reflect.ctx;
+    reflect.ctx = null; reflect.steps = []; reflect.picks = {}; // 答えは破棄する
+    renderResult(ctx.scores, ctx.previous, ctx.saved);
+  }
+
+  function renderReflection() {
+    const total = reflect.steps.length;
+    const privacyNote = h("p", { class: "muted" }, "ここでの答えは、保存も送信もされません。この画面を閉じると消えます。");
+
+    // 最後まで終わったとき：選んだ「意識してみたいこと」を振り返って終わる
+    if (reflect.index >= total) {
+      const chosen = Array.from(reflect.picks.final || []);
+      mount(
+        h("h1", null, "振り返りワーク"),
+        h("h2", null, "今日のまとめ"),
+        chosen.length > 0
+          ? h("div", { class: "card" }, h("h3", null, "意識してみたいこと"), h("ul", { class: "plain" }, chosen.map((c) => h("li", null, c))))
+          : h("p", { class: "muted" }, "今回は、意識してみたいことを選ばずに終わりました。それも一つの選び方です。"),
+        h("p", null, REFLECTIONS.closing),
+        privacyNote,
+        h("button", { class: "btn", onclick: leaveReflection }, "結果に戻る"),
+        h("button", { class: "btn secondary", onclick: () => { reflect.ctx = null; reflect.picks = {}; renderStart(); } }, "最初の画面へ"),
+        footerNote()
+      );
+      return;
+    }
+
+    const step = reflect.steps[reflect.index];
+    let body;
+    if (step.kind === "choose") {
+      const picked = reflect.picks[step.id] || (reflect.picks[step.id] = new Set());
+      body = h("fieldset", { class: "question" },
+        h("legend", null, step.title),
+        h("p", { class: "muted" }, "当てはまるものをいくつでも選べます。答えたくないときは、選ばずに進めます。"),
+        step.options.map((opt) => {
+          const input = h("input", { type: "checkbox", value: opt });
+          input.checked = picked.has(opt);
+          input.addEventListener("change", () => { if (input.checked) picked.add(opt); else picked.delete(opt); });
+          return h("label", { class: "choice-row" }, input, h("span", null, opt));
+        }));
+    } else {
+      body = h("div", { class: "card" },
+        h("h3", null, step.title),
+        h("p", { class: "muted" }, "答えを入力する必要はありません。頭の中で考えてみてください。"),
+        h("ul", { class: "plain" }, step.prompts.map((p) => h("li", null, p))));
+    }
+
+    mount(
+      h("h1", null, "振り返りワーク"),
+      h("p", { class: "muted" }, "（任意）" + (reflect.index + 1) + " / " + total),
+      body,
+      privacyNote,
+      h("button", { class: "btn", onclick: () => { reflect.index += 1; renderReflection(); } }, reflect.index === total - 1 ? "おわる" : "次へ"),
+      reflect.index > 0 ? h("button", { class: "btn secondary", onclick: () => { reflect.index -= 1; renderReflection(); } }, "戻る") : null,
+      h("button", { class: "btn secondary", onclick: leaveReflection }, "結果に戻る")
+    );
   }
 
   // 前回との比較（良し悪しは判定せず、中立的に表現）

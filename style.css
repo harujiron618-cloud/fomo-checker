@@ -26,6 +26,7 @@ h2 { font-size: 1.3rem; margin: 40px 0 10px; padding-top: 18px; border-top: 1px 
 .card.key-card { border-left: 5px solid var(--accent); }          /* いちばん伝えたい結果のカード */
 .reflect { margin: 12px 0 0; padding: 8px 12px; border-left: 4px solid var(--accent); background: var(--bg); font-weight: 700; } /* 振り返りの問い */
 .save-note { font-size: .95rem; }
+.layer-tag { display: inline-block; margin-right: 8px; padding: 0 8px; font-size: .75rem; font-weight: 700; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; vertical-align: 1px; } /* 個人／研究全体／注意の区別 */
 
 /* 重要な文：半透明の赤いアンダーライン */
 .key {
